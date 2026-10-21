@@ -1,0 +1,65 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[margin=1.7cm]{geometry}
+\usepackage{enumitem}\usepackage{titlesec}\usepackage[hidelinks]{hyperref}\usepackage{parskip}
+\usepackage{amsmath}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\titlespacing*{\section}{0pt}{6pt}{2pt}
+\setlist[itemize]{topsep=2pt,itemsep=1pt,parsep=0pt,leftmargin=1.3em}
+\pagestyle{empty}
+\begin{document}
+\begin{center}
+{\Large\bfseries Autonomous Line Following on the T-Bot}\\[2pt]
+{\large Lab 4 \textendash{} lane sensing and differential steering on a differential-drive robot}\\[4pt]
+{\small Embedded Real-Time Control laboratory \textendash{} M.Sc. Control Systems Engineering, University of Padova}\\
+{\small Author: Kiavash Rabbani Soudabi (ID 2141822) \textendash{} Course held by Prof. Alberto Morato \textendash{} 2025}
+\end{center}
+
+\section*{Purpose}
+Make the T-Bot follow a high-contrast line autonomously. The line is read by an eight-channel QTR
+reflectance array behind an SX1509 I\textsuperscript{2}C port expander; the robot is a differential-drive
+platform (STM32F767, bare-metal C, STM32CubeIDE) whose two motors are closed-loop speed-controlled by the
+PI controller built in Lab 3.
+
+\section*{What I implemented}
+\begin{itemize}
+  \item \textbf{Sensor readout in the control ISR:} the reflectance bank is read over
+        I\textsuperscript{2}C (\texttt{REG\_DATA\_B} of the expander at \texttt{0x3E}) inside the
+        \texttt{TIM6} period-elapsed callback, so sensing and actuation share the same \texttt{TS = 10\,ms} frame.
+  \item \textbf{Bit-pattern decoding and noise rejection:} \texttt{StoreBinary} turns the sensor byte into eight
+        per-sensor flags; \texttt{CalculateEsl} drops isolated sensors (a lit sensor with both neighbours dark,
+        and the same rule at the array ends) before any arithmetic.
+  \item \textbf{Weighted-centroid lateral position:} each sensor $i$ is weighted by its offset from the array
+        centre, $w_i = (\tfrac{N-1}{2}-i)\,P$ with $P=8$\,mm and $N=8$, and the lateral position is
+        \[ e_{sl}=\frac{\sum_i b_i w_i}{\sum_i b_i}, \qquad \textstyle\sum_i b_i \neq 0. \]
+  \item \textbf{Yaw error:} the line offset is turned into a heading error by the lever arm to the vehicle centre,
+        $\hat\psi=\arctan\!\left(e_{sl}/H\right)$ with $H=0.085$\,m.
+  \item \textbf{Steering law and adaptive speed:} the yaw rate command is proportional,
+        $\dot\psi = k_\psi \hat\psi$ with $k_\psi = 5$; wheel references come from the differential-drive
+        kinematics $v_r = v + \dot\psi D/2$, $v_l = v - \dot\psi D/2$ with wheelbase $D=0.165$\,m. The base speed
+        $v$ is reduced to $0.66\,v$ once $|\hat\psi| \ge 0.087$\,rad (5\textdegree{}), so the robot slows down in
+        the curves and keeps $0.534$\,m/s ($\approx 150$\,rpm) on straights.
+  \item \textbf{Speed loops and actuation:} the wheel references are converted to rpm through the wheel radius
+        ($r = 0.034$\,m) and tracked by one PI + anti-windup controller per wheel; the control signal in volts is
+        scaled to PWM duty against the measured battery voltage and applied with the lab's
+        \texttt{ForwardCoast}/\texttt{ForwardBreak} drive modes.
+  \item \textbf{Encoder handling across both motors:} the quadrature counters are read with per-motor previous
+        counts and explicit overflow/underflow correction, so the two wheels no longer share state.
+  \item \textbf{Instrumentation:} \texttt{printf} is retargeted to ITM/SWO for live traces, and the control
+        signals are streamed through the course datalogger for MATLAB analysis.
+\end{itemize}
+
+\section*{Results}
+The robot follows the track on the real T-Bot, holding the line on straights and slowing into the curves; the
+direction correction comes entirely from the sensor centroid, with no other feedback. Unlike Labs 1--3 this lab had
+no written report to submit, so this repository documents the implementation directly: the extracted source, this
+overview and the README's control-law description are the record of the work.
+
+\section*{Repository contents}
+\texttt{src/user\_code\_main.c} (USER CODE sections of my \texttt{main.c} \textendash{} the only part of the file
+that is mine) $\cdot$ \texttt{docs/} (this overview) $\cdot$ \texttt{README.md}.
+
+\section*{Skills demonstrated}
+Reflectance-array line sensing over I\textsuperscript{2}C, sensor-pattern filtering, weighted-centroid estimation,
+differential-drive kinematics and adaptive speed scheduling, cascaded control (steering $\rightarrow$ wheel speed),
+fixed-rate real-time scheduling in a timer ISR, dual-motor encoder handling, bare-metal C on ARM Cortex-M.
+\end{document}

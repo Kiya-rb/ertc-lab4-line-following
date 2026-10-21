@@ -1,0 +1,13 @@
+Debug/
+Release/
+*.o
+*.d
+*.su
+*.launch
+.settings/
+.metadata/
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
